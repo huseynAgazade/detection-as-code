@@ -1,0 +1,116 @@
+# ---------------------------------------------------------------------------
+# Detection rule template.
+#
+# Copy this file into the right category folder under detections/ and fill it
+# in, or let the scaffolder do it for you:
+#
+#     python -m pipelines.tools.new_detection --category identity/active_directory \
+#         --name "Kerberoasting via RC4 Service Ticket Request"
+#
+# Every field below is enforced by schemas/detection.schema.json. Fields marked
+# OPTIONAL are not required to pass structure validation, but the quality gates
+# warn when they are missing and the AI review scores their absence, because
+# they are what turns a query into something an analyst can act on.
+# ---------------------------------------------------------------------------
+
+metadata:
+  # <CATEGORY>-<SUBJECT>-<NNN>. Allocate the next free number with:
+  #     python -m pipelines.tools.new_detection --next-id identity
+  id: "XX-XXX-000"
+
+  name: "Short, specific, human-readable rule name"
+
+  # Written for the analyst who receives the alert: what fired, why it matters,
+  # and what it is not. This text is carried into the alert body at build time.
+  description: >-
+    Describe the behaviour being detected, the attacker objective it maps to,
+    and the shape of the evidence the query returns.
+
+  author: "your.handle"
+  created: "2026-01-01"
+  modified: "2026-01-01"
+  version: "1.0.0"
+
+  # draft -> experimental -> stable. Only experimental and stable are built.
+  status: "draft"
+
+  severity: "medium"       # informational | low | medium | high | critical
+  confidence: "medium"     # how strongly a hit implies real malicious activity
+
+  tags:
+    - "lowercase.dotted.tags"
+
+  # One entry per tactic/technique pair the rule genuinely covers.
+  mitre:
+    - tactic: "Credential Access"
+      tactic_id: "TA0006"
+      technique: "Brute Force: Password Spraying"
+      technique_id: "T1110.003"
+
+  # Vendor-neutral log sources. Drives the coverage report and the onboarding
+  # checklist for a new environment.
+  data_sources:
+    - "Windows Security Event Log"
+
+  # Must match exactly the blocks present under `detection:` below.
+  platforms:
+    - splunk
+
+  # OPTIONAL - soak-test bookkeeping for status: experimental.
+  lifecycle:
+    soak_started: "2026-01-01"
+    soak_days: 14
+    owner: "your.handle"
+
+  # OPTIONAL - platform-neutral alert framing, rendered into notable events /
+  # incidents by the build stage. Every `field` must be emitted by the query.
+  risk:
+    objects:
+      - field: "src"
+        type: "system"
+        score: 50
+    message: "Describe the finding in one line using $field$ placeholders."
+
+  # OPTIONAL - known benign causes, specific enough to confirm or rule out.
+  false_positives:
+    - "Named benign scenario and how to recognise it in the results."
+
+  # OPTIONAL - ordered investigation steps. The rule's slice of the runbook.
+  triage:
+    - "First thing the analyst should check, and where."
+
+  # OPTIONAL - public references only. No internal wikis or ticket links.
+  references:
+    - "https://attack.mitre.org/techniques/T1110/003/"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.standard }}"
+      earliest: "-65m"
+      latest: "-5m"
+
+    # Environment-specific values come from environments/<env>/variables.yaml
+    # as {{ jinja }} placeholders, so the rule itself stays portable.
+    #
+    # Tuning that is true for one environment only belongs in that
+    # environment's exclusions.yaml, referenced on a line of its own:
+    #
+    #     | search {{ exclusions.splunk.known_scanners | default("") }}
+    #
+    # Always chain `| default("")` so an environment that has not defined the
+    # name renders an empty string instead of failing the build.
+    query: |
+      | tstats summariesonly=true count
+          from datamodel=Authentication
+          where index={{ index.windows }}
+          by _time, Authentication.src
+      | `drop_dm_object_name("Authentication")`
+      | where count > {{ thresholds.failed_logon_burst }}
+      | table _time src count
+
+    # OPTIONAL but strongly recommended - alert de-duplication.
+    throttle:
+      fields:
+        - "src"
+      period: "6h"

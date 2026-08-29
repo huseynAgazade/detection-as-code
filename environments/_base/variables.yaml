@@ -1,0 +1,90 @@
+# ---------------------------------------------------------------------------
+# Base variables.
+#
+# Every environment inherits this file and overrides only what differs. A
+# placeholder used in a detection MUST resolve here, because the build stage
+# runs Jinja with StrictUndefined: an unknown variable fails the build instead
+# of silently rendering an empty string into a query.
+#
+# Nothing environment-identifying belongs in this file. Index names, table
+# names and hostnames live in the per-environment files that inherit it.
+# ---------------------------------------------------------------------------
+
+environment:
+  id: "_base"
+  name: "Base defaults"
+
+# Which analytics platforms this environment deploys to. A detection is built
+# only for platforms that are enabled here AND listed in its own metadata.
+platforms:
+  splunk:
+    enabled: true
+    app: "detection_as_code"
+  sentinel:
+    enabled: false
+    workspace: "replace-me"
+  elastic:
+    enabled: false
+    space: "default"
+
+# Splunk index names, referenced as {{ index.<name> }}.
+index:
+  windows: "windows"
+  endpoint: "endpoint"
+  dns: "dns"
+  network: "network"
+  cloud: "cloud"
+  web: "web"
+
+# Splunk sourcetypes, referenced as {{ sourcetype.<name> }}.
+sourcetype:
+  windows_security: "WinEventLog:Security"
+  cloud_audit: "aws:cloudtrail"
+  web_access: "web:access"
+
+# Microsoft Sentinel table names, referenced as {{ table.<name> }}.
+table:
+  windows_security: "SecurityEvent"
+  cloud_audit: "AWSCloudTrail"
+
+# Elastic data streams / index patterns, referenced as {{ datastream.<name> }}.
+datastream:
+  process: "logs-endpoint.events.process-*"
+  dns: "logs-*.dns-*"
+
+# Schedule presets, so cadence is a decision made once per environment rather
+# than copied into every rule.
+schedule:
+  fast: "*/5 * * * *"
+  standard: "0 * * * *"
+  slow: "0 */6 * * *"
+
+# Tuning knobs. A rule states its intent; the number that makes that intent
+# workable is a property of the environment, so it lives here.
+thresholds:
+  kerberoast_distinct_spns: 6
+  encoded_command_length: 120
+  dns_subdomain_length: 45
+  dns_query_burst: 50
+  dns_distinct_queries: 20
+  credential_stuffing_accounts: 25
+  credential_stuffing_failures: 40
+  ingestion_baseline_min_hourly: 100
+  ingestion_silence_minutes: 120
+
+# Free-form values that do not fit the categories above.
+vars:
+  login_endpoints: '"/login", "/signin", "/api/v1/auth/login"'
+  monitored_indexes: '"windows", "endpoint", "dns", "network", "cloud", "web"'
+
+# Per-rule overrides. `enabled: false` removes a rule from this environment's
+# build without touching the rule file, which is how a detection is muted for
+# one environment while staying in the catalogue.
+#
+#   rules:
+#     WEB-WAF-001:
+#       enabled: false
+#       reason: "No public login endpoint in this environment."
+#       thresholds:
+#         credential_stuffing_accounts: 40
+rules: {}

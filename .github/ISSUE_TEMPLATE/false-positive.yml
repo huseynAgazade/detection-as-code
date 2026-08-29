@@ -1,0 +1,35 @@
+name: False positive
+description: Report a detection that is firing on benign activity
+title: "[FP] "
+labels: ["false-positive"]
+body:
+  - type: input
+    id: rule_id
+    attributes:
+      label: Rule ID
+      placeholder: "ID-AD-001"
+    validations:
+      required: true
+
+  - type: textarea
+    id: benign_activity
+    attributes:
+      label: What the benign activity actually is
+      description: What was really happening, and how did you confirm it was benign?
+    validations:
+      required: true
+
+  - type: input
+    id: volume
+    attributes:
+      label: How often it fires
+      placeholder: "Roughly 40 alerts a day, all from the same three hosts"
+
+  - type: textarea
+    id: proposed_tuning
+    attributes:
+      label: Proposed tuning
+      description: |
+        What would you exclude, and how narrowly? Prefer the narrowest thing
+        that works: a specific parent process beats a whole host, which beats a
+        whole subnet. Say what the exclusion would make invisible.

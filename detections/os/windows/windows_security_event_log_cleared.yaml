@@ -1,0 +1,97 @@
+metadata:
+  id: "OS-WIN-001"
+  name: "Windows Security Event Log Cleared"
+  description: >-
+    The Windows Security event log was cleared on a host, recorded by the operating
+    system as event 1102. Clearing the Security log destroys the local record of
+    logon, privilege, and object-access activity, and there is no routine
+    administrative task that requires it, so the event is treated as an indicator of
+    an attacker removing evidence after operating on the host. The rule reports the
+    host, the account that performed the clear, and the time, which is the anchor
+    point for reconstructing what the log would otherwise have contained.
+  author: "huseyn.aghazada"
+  created: "2026-01-15"
+  modified: "2026-06-18"
+  version: "1.0.1"
+  status: "stable"
+  severity: "high"
+  confidence: "high"
+
+  tags:
+    - "windows"
+    - "anti.forensics"
+    - "log.tampering"
+
+  mitre:
+    - tactic: "Defense Evasion"
+      tactic_id: "TA0005"
+      technique: "Indicator Removal: Clear Windows Event Logs"
+      technique_id: "T1070.001"
+
+  data_sources:
+    - "Windows Security Event Log"
+    - "Windows Event Log Service Events (1102)"
+
+  platforms:
+    - splunk
+    - sentinel
+
+  risk:
+    objects:
+      - field: "host"
+        type: "system"
+        score: 80
+      - field: "user"
+        type: "user"
+        score: 80
+    message: "The Windows Security event log on $host$ was cleared by $user$."
+
+  false_positives:
+    - "Golden-image preparation and machine re-provisioning clear logs deliberately; these come from build hosts and correlate with a rebuild ticket."
+    - "Some forensic and log-shipping tools clear the log after successful archival; the clearing account is a known service identity in that case."
+
+  triage:
+    - "Establish whether a change record covers a rebuild or imaging task on this host at this time."
+    - "Confirm the clearing account is expected to hold administrative rights on the host, and review its recent authentications elsewhere."
+    - "Recover the missing window from centrally forwarded copies of the log, which are unaffected by a local clear."
+    - "Look for activity immediately before the clear: privilege escalation, credential access, service creation, or new scheduled tasks."
+    - "Treat an unexplained clear as a compromised host until the preceding activity is accounted for."
+
+  references:
+    - "https://attack.mitre.org/techniques/T1070/001/"
+    - "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10-security-auditing/event-1102"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.fast }}"
+      earliest: "-20m"
+      latest: "-5m"
+
+    query: |
+      index={{ index.windows }} sourcetype={{ sourcetype.windows_security }} EventCode=1102
+          {{ exclusions.splunk.event_log_cleared_build_hosts | default("") }}
+      | eval host=lower(ComputerName), user=lower(SubjectUserName), domain=SubjectDomainName
+      | table _time, host, user, domain, EventCode, LogName
+
+    throttle:
+      fields:
+        - "host"
+      period: "1h"
+
+  sentinel:
+    schedule:
+      frequency: "PT15M"
+      lookback: "PT15M"
+
+    query: |
+      {{ table.windows_security }}
+      | where EventID == 1102
+      {{ exclusions.sentinel.event_log_cleared_build_hosts | default("") }}
+      | extend host = tolower(Computer), user = tolower(SubjectUserName), domain = SubjectDomainName
+      | project TimeGenerated, host, user, domain, EventID, Activity
+
+    throttle:
+      fields:
+        - "host"
+      period: "1h"

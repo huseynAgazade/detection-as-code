@@ -1,0 +1,10 @@
+# Pipeline dependencies. Pinned to a minor version so a CI run and a local run
+# behave the same way; bump deliberately, not by accident.
+
+PyYAML>=6.0,<7.0
+jsonschema>=4.20,<5.0
+Jinja2>=3.1,<4.0
+
+# Stage 2 (AI review) only. The other stages run without it, so a contributor
+# who cannot reach the API can still validate and build.
+anthropic>=1.0,<2.0

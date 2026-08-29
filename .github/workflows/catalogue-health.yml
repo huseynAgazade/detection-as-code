@@ -1,0 +1,44 @@
+name: Catalogue health
+
+# A detection repository decays quietly. Rules stay in a soak window nobody
+# closes, coverage reports drift from the rules they describe, and warnings
+# accumulate until nobody reads them. This runs weekly against main and treats
+# all three as failures rather than as background noise.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"   # Monday morning, before the working week starts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  health:
+    name: Weekly catalogue review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Warnings are errors here. During the week they inform; on the weekly
+      # run they are the backlog.
+      - name: Validate in strict mode
+        run: python -m pipelines.validate --strict
+
+      - name: Check the coverage report is current
+        run: |
+          python -m pipelines.tools.coverage --output docs/coverage.md
+          git diff --exit-code docs/coverage.md \
+            || { echo "::error::docs/coverage.md is stale; run 'make coverage' and commit the result."; exit 1; }
+
+      - name: Report soak windows that are due
+        run: python -m pipelines.tools.soak_report --fail-on-overdue

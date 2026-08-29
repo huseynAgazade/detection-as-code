@@ -1,0 +1,46 @@
+# Lab environment: the detection engineer's own stack. Thresholds are lowered so
+# a rule fires readily during development, and every platform is enabled so a
+# multi-platform rule is exercised end to end before it reaches production.
+
+environment:
+  id: "lab"
+  name: "Detection Engineering Lab"
+
+platforms:
+  splunk:
+    enabled: true
+    app: "detection_as_code_lab"
+  sentinel:
+    enabled: false
+  elastic:
+    enabled: true
+    space: "detections"
+
+index:
+  windows: "lab_windows"
+  endpoint: "lab_endpoint"
+  dns: "lab_dns"
+  network: "lab_network"
+  cloud: "lab_cloud"
+  web: "lab_web"
+
+schedule:
+  fast: "*/10 * * * *"
+  standard: "0 * * * *"
+  slow: "0 */12 * * *"
+
+thresholds:
+  kerberoast_distinct_spns: 3
+  encoded_command_length: 60
+  dns_subdomain_length: 30
+  dns_query_burst: 10
+  dns_distinct_queries: 5
+  credential_stuffing_accounts: 5
+  credential_stuffing_failures: 10
+  ingestion_baseline_min_hourly: 10
+  ingestion_silence_minutes: 240
+
+vars:
+  monitored_indexes: '"lab_windows", "lab_endpoint", "lab_dns", "lab_network", "lab_cloud", "lab_web"'
+
+rules: {}

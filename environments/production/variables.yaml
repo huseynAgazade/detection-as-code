@@ -1,0 +1,55 @@
+# Production environment. Thresholds here are the tuned values that survived a
+# soak window in the lab; changing one is a reviewed change like any other.
+
+environment:
+  id: "production"
+  name: "Production SOC"
+
+platforms:
+  splunk:
+    enabled: true
+    app: "detection_as_code"
+  sentinel:
+    enabled: true
+    workspace: "soc-primary"
+  elastic:
+    enabled: false
+
+index:
+  windows: "wineventlog"
+  endpoint: "edr"
+  dns: "dns"
+  network: "netflow"
+  cloud: "cloudtrail"
+  web: "waf"
+
+sourcetype:
+  windows_security: "WinEventLog:Security"
+  cloud_audit: "aws:cloudtrail"
+  web_access: "waf:access"
+
+schedule:
+  fast: "*/5 * * * *"
+  standard: "0 * * * *"
+  slow: "0 */6 * * *"
+
+thresholds:
+  kerberoast_distinct_spns: 8
+  encoded_command_length: 150
+  dns_subdomain_length: 50
+  dns_query_burst: 100
+  dns_distinct_queries: 40
+  credential_stuffing_accounts: 30
+  credential_stuffing_failures: 60
+  ingestion_baseline_min_hourly: 500
+  ingestion_silence_minutes: 90
+
+vars:
+  monitored_indexes: '"wineventlog", "edr", "dns", "netflow", "cloudtrail", "waf"'
+
+rules:
+  # Still inside its soak window in the lab. It stays in the catalogue and keeps
+  # being validated and reviewed, but it is not deployed here yet.
+  WEB-WAF-001:
+    enabled: false
+    reason: "Soak window ends 2026-09-02; promote after review of lab findings."

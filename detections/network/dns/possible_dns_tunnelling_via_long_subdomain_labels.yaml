@@ -1,0 +1,135 @@
+metadata:
+  id: "NET-DNS-001"
+  name: "Possible DNS Tunnelling via Long Subdomain Labels"
+  description: >-
+    A single internal host produced a burst of DNS queries whose subdomain labels
+    are far longer than normal resolution requires, all under a small number of
+    parent domains. Encoding data into the leftmost labels is the standard way to
+    move information over DNS when direct egress is blocked, and it is used by both
+    exfiltration tooling and DNS-based command-and-control channels. The rule
+    aggregates per source and registered domain rather than alerting per query, so
+    the alert describes a channel rather than a single lookup, and it returns
+    sample labels and the label-length distribution for triage.
+  author: "huseyn.aghazada"
+  created: "2026-01-20"
+  modified: "2026-08-12"
+  version: "1.3.0"
+  status: "stable"
+  severity: "high"
+  confidence: "low"
+
+  tags:
+    - "dns"
+    - "exfiltration"
+    - "command.and.control"
+
+  mitre:
+    - tactic: "Command and Control"
+      tactic_id: "TA0011"
+      technique: "Application Layer Protocol: DNS"
+      technique_id: "T1071.004"
+    - tactic: "Exfiltration"
+      tactic_id: "TA0010"
+      technique: "Exfiltration Over Alternative Protocol"
+      technique_id: "T1048"
+
+  data_sources:
+    - "DNS Query Logs"
+    - "DNS Resolver or Firewall DNS Inspection Logs"
+
+  platforms:
+    - splunk
+    - elastic
+
+  risk:
+    objects:
+      - field: "src"
+        type: "system"
+        score: 65
+      - field: "parent_domain"
+        type: "network"
+        score: 65
+    message: "Host $src$ sent $query_count$ DNS queries with abnormally long subdomain labels to $parent_domain$ (longest label $max_label_length$ characters)."
+
+  false_positives:
+    - "Content delivery networks, anti-malware reputation lookups, and telemetry services legitimately encode data into long subdomain labels; these appear as a stable set of parent domains across many hosts."
+    - "Endpoint security and email security agents perform hash and URL reputation lookups over DNS, producing exactly this pattern from every managed host."
+    - "Cloud storage and collaboration platforms generate long, high-entropy hostnames for signed resources."
+
+  triage:
+    - "Check whether the parent domain is seen from many hosts or only this one: a channel used by a single host is far more interesting than a fleet-wide service."
+    - "Look at the registration age and reputation of the parent domain, and whether it resolves to infrastructure the organisation ever contacts otherwise."
+    - "Decode a sample of the labels; base32 and hex-encoded payloads are common and decode into readable structure."
+    - "Correlate with process and proxy telemetry on the source host to identify which process is generating the lookups."
+    - "If the domain is not attributable to a known service, block it at the resolver and treat the host as potentially compromised."
+
+  references:
+    - "https://attack.mitre.org/techniques/T1071/004/"
+    - "https://attack.mitre.org/techniques/T1048/"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.standard }}"
+      earliest: "-70m"
+      latest: "-10m"
+
+    query: |
+      | tstats summariesonly=true count
+          FROM datamodel=Network_Resolution.DNS
+          WHERE index={{ index.dns }} DNS.message_type="QUERY"
+                {{ exclusions.splunk.dns_tunneling_known_services | default("") }}
+          BY _time span=1h, DNS.src, DNS.query
+      | `drop_dm_object_name("DNS")`
+      | eval query=lower(query)
+      | rex field=query "(?<parent_domain>[^.]+\.[^.]+)\.?$"
+      | eval subdomain=replace(query, "\." . parent_domain . "\.?$", "")
+      | eval label_length=len(subdomain)
+      | where label_length > {{ thresholds.dns_subdomain_length }}
+      | stats count AS query_count
+              dc(query) AS distinct_queries
+              max(label_length) AS max_label_length
+              avg(label_length) AS avg_label_length
+              values(subdomain) AS sample_labels
+              BY _time, src, parent_domain
+      | where query_count >= {{ thresholds.dns_query_burst }}
+              AND distinct_queries >= {{ thresholds.dns_distinct_queries }}
+      | eval sample_labels=mvindex(sample_labels, 0, 4)
+      | table _time, src, parent_domain, query_count, distinct_queries,
+              max_label_length, avg_label_length, sample_labels
+
+    throttle:
+      fields:
+        - "src"
+        - "parent_domain"
+      period: "24h"
+
+  elastic:
+    schedule:
+      interval: "1h"
+      lookback: "1h"
+
+    query: |
+      FROM {{ datastream.dns }}
+      | WHERE event.category == "network" AND dns.type == "query"
+      | WHERE dns.question.registered_domain IS NOT NULL
+      {{ exclusions.elastic.dns_tunneling_known_services | default("") }}
+      | EVAL query = TO_LOWER(dns.question.name),
+             parent_domain = TO_LOWER(dns.question.registered_domain)
+      | EVAL label_length = LENGTH(query) - LENGTH(parent_domain) - 1
+      | WHERE label_length > {{ thresholds.dns_subdomain_length }}
+      | STATS query_count = COUNT(*),
+              distinct_queries = COUNT_DISTINCT(query),
+              max_label_length = MAX(label_length),
+              avg_label_length = AVG(label_length)
+          BY source.ip, parent_domain
+      | WHERE query_count >= {{ thresholds.dns_query_burst }}
+              AND distinct_queries >= {{ thresholds.dns_distinct_queries }}
+      | SORT query_count DESC
+      | LIMIT 200
+
+    throttle:
+      fields:
+        - "source.ip"
+        - "parent_domain"
+      period: "24h"
