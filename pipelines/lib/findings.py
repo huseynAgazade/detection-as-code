@@ -9,16 +9,16 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 
-class Level(str, Enum):
+class Level(StrEnum):
+    """Severity of a finding. A StrEnum so a level interpolates as its own name
+    in a message or a GitHub workflow command without an explicit `.value`."""
+
     ERROR = "error"
     WARNING = "warning"
-
-    def __str__(self) -> str:  # pragma: no cover - display only
-        return self.value
 
 
 @dataclass(frozen=True)

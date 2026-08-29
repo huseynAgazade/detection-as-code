@@ -1,7 +1,13 @@
 # Everything the pipeline does, runnable locally with the same arguments CI uses.
 # If a target passes here, the corresponding job passes there.
 
-PYTHON ?= python3
+# Prefer a project virtualenv when one exists. Debian-family distributions
+# (Kali, Ubuntu) refuse `pip install` into the system interpreter under PEP 668,
+# so `make install` builds .venv and every other target picks it up
+# automatically. CI has no .venv and installs into the runner's interpreter, so
+# this resolves to plain python3 there.
+VENV   ?= .venv
+PYTHON ?= $(shell [ -x $(VENV)/bin/python ] && echo $(VENV)/bin/python || echo python3)
 ENV    ?=
 
 .DEFAULT_GOAL := help
@@ -12,8 +18,12 @@ help: ## Show this help
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: install
-install: ## Install pipeline and development dependencies
-	$(PYTHON) -m pip install -r requirements-dev.txt
+install: ## Create .venv and install pipeline and development dependencies
+	python3 -m venv $(VENV)
+	$(VENV)/bin/python -m pip install --upgrade pip
+	$(VENV)/bin/python -m pip install -r requirements-dev.txt
+	@echo
+	@echo "Installed into $(VENV)/. Every make target uses it automatically."
 
 .PHONY: validate
 validate: ## Stage 1: structure, quality gates, sensitive-value scan
@@ -49,6 +59,10 @@ test: ## Run the pipeline test suite
 
 .PHONY: lint
 lint: ## Lint the pipeline code
+	@$(PYTHON) -c "import ruff" 2>/dev/null || { \
+		echo "ruff is not installed in $(PYTHON). Run 'make install' first."; \
+		echo "Skipping lint locally would just move the failure into CI."; \
+		exit 1; }
 	$(PYTHON) -m ruff check pipelines tests
 
 .PHONY: check

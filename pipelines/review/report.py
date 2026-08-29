@@ -8,7 +8,7 @@ should be able to read the first table and know whether to look further.
 from __future__ import annotations
 
 import json
-from typing import Iterable
+from collections.abc import Iterable
 
 from . import rubric
 from .engine import ReviewResult, Usage
