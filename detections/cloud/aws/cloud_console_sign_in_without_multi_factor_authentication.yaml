@@ -1,0 +1,119 @@
+metadata:
+  id: "CLD-IAM-001"
+  name: "Cloud Console Sign-In Without Multi-Factor Authentication"
+  description: >-
+    An identity signed in successfully to the cloud provider's management console
+    with a password alone, no second factor and no federated single sign-on. Any
+    console session obtained this way rests entirely on a credential that can be
+    phished, reused, or found in a repository, and it is the usual first step from
+    a leaked credential to control-plane access. The rule excludes federated
+    sign-ins, where the factor is enforced at the identity provider instead, and
+    reports the identity, source address, and user agent for attribution.
+  author: "huseyn.aghazada"
+  created: "2026-04-07"
+  modified: "2026-08-04"
+  version: "1.1.0"
+  status: "stable"
+  severity: "medium"
+  confidence: "high"
+
+  tags:
+    - "cloud"
+    - "iam"
+    - "authentication"
+
+  mitre:
+    - tactic: "Initial Access"
+      tactic_id: "TA0001"
+      technique: "Valid Accounts: Cloud Accounts"
+      technique_id: "T1078.004"
+
+  data_sources:
+    - "Cloud Provider Control-Plane Audit Logs"
+    - "Cloud Console Sign-In Events"
+
+  platforms:
+    - splunk
+    - sentinel
+
+  risk:
+    objects:
+      - field: "identity"
+        type: "user"
+        score: 60
+      - field: "src_ip"
+        type: "network"
+        score: 45
+    message: "Identity $identity$ signed in to the cloud console from $src_ip$ without multi-factor authentication."
+
+  false_positives:
+    - "Break-glass and emergency-access identities are deliberately exempt from MFA in some designs; they should be a short, documented list."
+    - "Automation that drives the console through a headless browser will appear as a password sign-in; identify it by a stable source address and user agent."
+    - "Newly created identities may sign in once before completing MFA enrolment."
+
+  triage:
+    - "Determine whether the identity is a human user, a break-glass account, or automation, and whether MFA is expected to be enforced for it."
+    - "Compare the source address, geography, and user agent against the identity's normal pattern."
+    - "Review control-plane activity in the session that followed, with attention to identity, logging, and network configuration changes."
+    - "Enforce MFA on the identity, or document the exemption, so the same sign-in does not alert indefinitely."
+
+  references:
+    - "https://attack.mitre.org/techniques/T1078/004/"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.standard }}"
+      earliest: "-70m"
+      latest: "-10m"
+
+    query: |
+      index={{ index.cloud }} sourcetype={{ sourcetype.cloud_audit }}
+          eventName="ConsoleLogin"
+          "responseElements.ConsoleLogin"="Success"
+          "additionalEventData.MFAUsed"="No"
+          NOT "additionalEventData.SamlProviderArn"=*
+          {{ exclusions.splunk.console_login_break_glass | default("") }}
+      | eval identity=coalesce('userIdentity.userName', 'userIdentity.arn'),
+             identity_type='userIdentity.type',
+             src_ip=sourceIPAddress
+      | stats min(_time) AS first_seen
+              max(_time) AS last_seen
+              count AS sign_in_count
+              values(userAgent) AS user_agents
+              BY identity, identity_type, src_ip, awsRegion
+      | table first_seen, last_seen, identity, identity_type, src_ip, awsRegion,
+              sign_in_count, user_agents
+
+    throttle:
+      fields:
+        - "identity"
+      period: "12h"
+
+  sentinel:
+    schedule:
+      frequency: "PT1H"
+      lookback: "PT1H"
+
+    query: |
+      {{ table.cloud_audit }}
+      | where EventName == "ConsoleLogin"
+      | where ResponseElements has "\"ConsoleLogin\":\"Success\""
+      | where AdditionalEventData has "\"MFAUsed\":\"No\""
+      | where AdditionalEventData !has "SamlProviderArn"
+      {{ exclusions.sentinel.console_login_break_glass | default("") }}
+      | extend identity = coalesce(UserIdentityUserName, UserIdentityArn),
+               identity_type = UserIdentityType,
+               src_ip = SourceIpAddress
+      | summarize first_seen = min(TimeGenerated),
+                  last_seen = max(TimeGenerated),
+                  sign_in_count = count(),
+                  user_agents = make_set(UserAgent, 10)
+          by identity, identity_type, src_ip, AWSRegion
+      | project first_seen, last_seen, identity, identity_type, src_ip, AWSRegion,
+                sign_in_count, user_agents
+
+    throttle:
+      fields:
+        - "identity"
+      period: "12h"

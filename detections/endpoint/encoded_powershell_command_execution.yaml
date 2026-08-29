@@ -1,0 +1,125 @@
+metadata:
+  id: "EDR-PRC-001"
+  name: "Encoded PowerShell Command Execution"
+  description: >-
+    PowerShell was started with an encoded command payload (-EncodedCommand and its
+    accepted abbreviations, or -e / -enc) long enough to carry a real script rather
+    than a one-liner. Encoding the command hides its contents from shell history,
+    command-line logging that is only read by a human, and simple string-matching
+    controls, which is why it appears in loaders, living-off-the-land downloaders,
+    and post-exploitation frameworks. The result set returns the full command line
+    and the parent process so triage can decode the payload and judge the caller.
+  author: "huseyn.aghazada"
+  created: "2026-03-02"
+  modified: "2026-08-04"
+  version: "1.1.0"
+  status: "stable"
+  severity: "medium"
+  confidence: "medium"
+
+  tags:
+    - "windows"
+    - "powershell"
+    - "obfuscation"
+
+  mitre:
+    - tactic: "Execution"
+      tactic_id: "TA0002"
+      technique: "Command and Scripting Interpreter: PowerShell"
+      technique_id: "T1059.001"
+    - tactic: "Defense Evasion"
+      tactic_id: "TA0005"
+      technique: "Obfuscated Files or Information"
+      technique_id: "T1027"
+
+  data_sources:
+    - "Endpoint Process Creation Events"
+    - "Windows Security Event Log (4688) or Sysmon Event ID 1"
+
+  platforms:
+    - splunk
+    - elastic
+
+  risk:
+    objects:
+      - field: "host"
+        type: "system"
+        score: 55
+      - field: "user"
+        type: "user"
+        score: 55
+      - field: "process_name"
+        type: "process"
+        score: 40
+    message: "Encoded PowerShell command ($payload_length$ characters) executed on $host$ by $user$, parent process $parent_process_name$."
+
+  false_positives:
+    - "Configuration management and software deployment agents routinely wrap PowerShell payloads in -EncodedCommand; identify them by their parent process, not by the flag."
+    - "Some vendor installers and scheduled maintenance jobs encode commands to survive quoting; these repeat on a fixed schedule with an identical payload."
+    - "Administrators pasting encoded snippets from internal documentation will trigger this from an interactive parent such as explorer.exe or a terminal."
+
+  triage:
+    - "Base64-decode the payload from the command line and read what it actually does before anything else; UTF-16LE is the usual encoding."
+    - "Check the parent process: a management agent is expected, while office applications, browsers, script hosts, and archive tools are not."
+    - "Correlate with outbound network connections and file writes from the same host in the minutes that follow."
+    - "If the decoded payload downloads or reflectively loads code, isolate the host and preserve the process tree before remediation."
+
+  references:
+    - "https://attack.mitre.org/techniques/T1059/001/"
+    - "https://attack.mitre.org/techniques/T1027/"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.fast }}"
+      earliest: "-20m"
+      latest: "-5m"
+
+    query: |
+      | tstats summariesonly=true count
+          FROM datamodel=Endpoint.Processes
+          WHERE index={{ index.endpoint }}
+                Processes.process_name IN ("powershell.exe", "pwsh.exe")
+                Processes.process="* -e*"
+                {{ exclusions.splunk.encoded_powershell_managed_agents | default("") }}
+          BY _time span=5m, Processes.dest, Processes.user, Processes.process_name,
+             Processes.parent_process_name, Processes.process
+      | `drop_dm_object_name("Processes")`
+      | rename dest AS host
+      | regex process="(?i)\s-(?:e|en|enc|encod|encode|encoded|encodedc|encodedco|encodedcom|encodedcomm|encodedcomma|encodedcomman|encodedcommand)\s+[A-Za-z0-9+/=]+"
+      | rex field=process "(?i)\s-\w+\s+(?<encoded_payload>[A-Za-z0-9+/=]{20,})"
+      | eval payload_length=len(encoded_payload)
+      | where payload_length >= {{ thresholds.encoded_command_length }}
+      | table _time, host, user, process_name, parent_process_name, payload_length, process
+
+    throttle:
+      fields:
+        - "host"
+        - "user"
+      period: "4h"
+
+  elastic:
+    schedule:
+      interval: "5m"
+      lookback: "15m"
+
+    query: |
+      FROM {{ datastream.process }}
+      | WHERE event.category == "process" AND event.type == "start"
+      | WHERE process.name IN ("powershell.exe", "pwsh.exe")
+      | WHERE process.command_line RLIKE "(?i).*\\s-(e|en|enc|encod|encode|encoded|encodedc|encodedco|encodedcom|encodedcomm|encodedcomma|encodedcomman|encodedcommand)\\s+[A-Za-z0-9+/=]{20,}.*"
+      {{ exclusions.elastic.encoded_powershell_managed_agents | default("") }}
+      | GROK process.command_line "(?i) -(?<encoded_flag>e[a-z]*) +(?<encoded_payload>[A-Za-z0-9+/=]{20,})"
+      | WHERE encoded_payload IS NOT NULL
+      | EVAL payload_length = LENGTH(encoded_payload)
+      | WHERE payload_length >= {{ thresholds.encoded_command_length }}
+      | KEEP @timestamp, host.name, user.name, process.name, process.parent.name,
+             payload_length, process.command_line
+      | SORT @timestamp DESC
+      | LIMIT 500
+
+    throttle:
+      fields:
+        - "host.name"
+        - "user.name"
+      period: "4h"

@@ -1,0 +1,83 @@
+metadata:
+  id: "OPS-HLT-001"
+  name: "Log Source Stopped Sending Events"
+  description: >-
+    A log source that reported continuously over the preceding baseline period has
+    sent nothing for longer than its allowed silence window. Detection coverage is
+    only as good as the telemetry behind it, and a silent source produces no alerts
+    at all rather than an obvious failure, so a gap in ingestion is a security
+    problem and not only an operational one. The rule compares each source's last
+    event against its own recent history, which keeps low-volume sources from being
+    measured against the same threshold as high-volume ones.
+  author: "huseyn.aghazada"
+  created: "2026-02-28"
+  modified: "2026-07-22"
+  version: "1.1.0"
+  status: "stable"
+  severity: "medium"
+  confidence: "high"
+
+  tags:
+    - "detection.health"
+    - "telemetry"
+    - "coverage"
+
+  mitre:
+    - tactic: "Defense Evasion"
+      tactic_id: "TA0005"
+      technique: "Impair Defenses: Disable or Modify Tools"
+      technique_id: "T1562.001"
+
+  data_sources:
+    - "SIEM Ingestion Metadata"
+
+  platforms:
+    - splunk
+
+  risk:
+    objects:
+      - field: "source_key"
+        type: "application"
+        score: 40
+    message: "Log source $source_key$ has sent no events for $silent_minutes$ minutes, against a baseline of $baseline_events_per_hour$ events per hour."
+
+  false_positives:
+    - "Sources that are genuinely idle outside business hours will look silent; either exclude them or give them a longer silence window."
+    - "Planned maintenance, decommissioning, and index migrations stop ingestion legitimately and should be suppressed for the duration of the change."
+    - "A source renamed at the origin appears as one silent source and one new source at the same moment."
+
+  triage:
+    - "Confirm from the source key whether the gap is one host, one collector, or an entire index, which points at the layer that failed."
+    - "Check for a change record, decommissioning ticket, or maintenance window covering the gap."
+    - "Verify the forwarder or collector is running and can reach the ingestion tier, and check for licence or queue limits on the receiving side."
+    - "List the detections that depend on this source so the coverage gap is understood and communicated, not just the outage."
+
+  references:
+    - "https://attack.mitre.org/techniques/T1562/001/"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.slow }}"
+      earliest: "-24h"
+      latest: "now"
+
+    query: |
+      | tstats count AS event_count
+               max(_time) AS last_event
+          WHERE index IN ({{ vars.monitored_indexes }}) earliest=-24h latest=now
+          BY index, sourcetype
+      | eval source_key=index . ":" . sourcetype
+      | eval baseline_events_per_hour=round(event_count / 24, 0)
+      | eval silent_minutes=round((now() - last_event) / 60, 0)
+      | where baseline_events_per_hour >= {{ thresholds.ingestion_baseline_min_hourly }}
+              AND silent_minutes >= {{ thresholds.ingestion_silence_minutes }}
+      | eval last_event=strftime(last_event, "%Y-%m-%d %H:%M:%S")
+      | table source_key, index, sourcetype, last_event, silent_minutes,
+              baseline_events_per_hour, event_count
+      | sort - silent_minutes
+
+    throttle:
+      fields:
+        - "source_key"
+      period: "12h"

@@ -1,0 +1,115 @@
+metadata:
+  id: "ID-AD-001"
+  name: "Kerberoasting via RC4 Service Ticket Request"
+  description: >-
+    A single account requested Kerberos service tickets (event 4769) for an unusual
+    number of distinct service principal names within one hour, with RC4-HMAC
+    encryption (0x17) selected. Modern domains negotiate AES by default, so a
+    deliberate downgrade to RC4 combined with SPN enumeration is the signature of
+    Kerberoasting: the attacker collects tickets encrypted with the service
+    account's password hash and cracks them offline. The result set lists the
+    requesting account, the source host, and every SPN it asked for, so triage can
+    tell an attack apart from a host that legitimately talks to many services.
+  author: "huseyn.aghazada"
+  created: "2026-02-11"
+  modified: "2026-08-04"
+  version: "1.2.0"
+  status: "stable"
+  severity: "high"
+  confidence: "medium"
+
+  tags:
+    - "active.directory"
+    - "kerberos"
+    - "credential.access"
+
+  mitre:
+    - tactic: "Credential Access"
+      tactic_id: "TA0006"
+      technique: "Steal or Forge Kerberos Tickets: Kerberoasting"
+      technique_id: "T1558.003"
+
+  data_sources:
+    - "Windows Security Event Log"
+    - "Domain Controller Kerberos Service Ticket Operations (4769)"
+
+  platforms:
+    - splunk
+    - sentinel
+
+  risk:
+    objects:
+      - field: "account"
+        type: "user"
+        score: 70
+      - field: "src"
+        type: "system"
+        score: 60
+    message: "Account $account$ requested RC4 Kerberos service tickets for $distinct_spns$ distinct SPNs from $src$ within one hour."
+
+  false_positives:
+    - "Vulnerability scanners and AD assessment tooling enumerate SPNs by design; scope them out by source host, not by account."
+    - "Legacy applications and appliances that still negotiate RC4 will request tickets normally, but for a small and stable set of SPNs."
+    - "Backup, monitoring, and service-discovery agents can touch many services from one host; confirm the account is a known service identity before escalating."
+
+  triage:
+    - "Confirm whether the requesting account is a human user or a service identity, and whether the source host is one it normally authenticates from."
+    - "Review the requested SPN list: broad, unrelated services across the domain indicate enumeration, a handful of related ones usually does not."
+    - "Check the same account for preceding LDAP or ADWS SPN enumeration and for subsequent authentication to the targeted services."
+    - "If confirmed, rotate the passwords of the targeted service accounts, since captured tickets remain crackable offline."
+
+  references:
+    - "https://attack.mitre.org/techniques/T1558/003/"
+    - "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10-security-auditing/event-4769"
+
+detection:
+  splunk:
+    schedule:
+      cron: "{{ schedule.standard }}"
+      earliest: "-70m"
+      latest: "-10m"
+
+    query: |
+      index={{ index.windows }} sourcetype={{ sourcetype.windows_security }} EventCode=4769
+          Ticket_Encryption_Type="0x17"
+          Service_Name!="*$"
+          Account_Name!="*$@*"
+          {{ exclusions.splunk.kerberoasting_known_enumerators | default("") }}
+      | eval account=lower(Account_Name), spn=lower(Service_Name), src=Client_Address
+      | bin _time span=1h
+      | stats dc(spn) AS distinct_spns
+              values(spn) AS requested_spns
+              count AS ticket_count
+              BY _time, account, src
+      | where distinct_spns >= {{ thresholds.kerberoast_distinct_spns }}
+      | table _time, account, src, distinct_spns, requested_spns, ticket_count
+
+    throttle:
+      fields:
+        - "account"
+      period: "12h"
+
+  sentinel:
+    schedule:
+      frequency: "PT1H"
+      lookback: "PT1H"
+
+    query: |
+      {{ table.windows_security }}
+      | where EventID == 4769
+      | where TicketEncryptionType == "0x17"
+      | where ServiceName !endswith "$"
+      | where TargetUserName !endswith "$"
+      {{ exclusions.sentinel.kerberoasting_known_enumerators | default("") }}
+      | extend account = tolower(TargetUserName), spn = tolower(ServiceName), src = IpAddress
+      | summarize distinct_spns = dcount(spn),
+                  requested_spns = make_set(spn, 50),
+                  ticket_count = count()
+        by bin(TimeGenerated, 1h), account, src
+      | where distinct_spns >= {{ thresholds.kerberoast_distinct_spns }}
+      | project TimeGenerated, account, src, distinct_spns, requested_spns, ticket_count
+
+    throttle:
+      fields:
+        - "account"
+      period: "12h"
