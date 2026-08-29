@@ -316,13 +316,43 @@ def check_placeholders(detection: Detection, variables: dict[str, Any], report: 
             root = expression.split("|")[0].strip().split(".")[0].split("[")[0].strip()
             if root in ("exclusions", "rules"):
                 continue  # environment-scoped, and always guarded by default("")
-            if root and root not in variables:
+
+            missing = _unresolvable_path(expression, variables)
+            if missing is not None:
                 report.error(
                     "placeholder",
-                    f"detection.{platform} uses '{{{{ {expression} }}}}' but '{root}' is not "
+                    f"detection.{platform} uses '{{{{ {expression} }}}}' but '{missing}' is not "
                     f"defined in environments/_base/variables.yaml, so the build will fail",
                     detection.path,
                 )
+
+
+def _unresolvable_path(expression: str, variables: dict[str, Any]) -> str | None:
+    """Walk a dotted placeholder path through the base variables.
+
+    Returns the longest prefix that does not resolve, or None when the whole
+    path does. Checking only the root name is not enough: `thresholds` existing
+    says nothing about `thresholds.a_threshold_that_was_never_added`, and that
+    is the typo people actually make - adding a rule and forgetting the value it
+    depends on. The build would catch it, but by then the error names a Jinja
+    expression rather than a rule.
+    """
+    head, _, filters = expression.partition("|")
+    if "default(" in filters.replace(" ", ""):
+        return None  # explicitly guarded; absence is handled, not a build failure
+
+    path = head.strip()
+    if not path or "(" in path or "[" in path:
+        return None  # a call or a subscript; out of scope for a static check
+
+    node: Any = variables
+    walked: list[str] = []
+    for segment in path.split("."):
+        walked.append(segment)
+        if not isinstance(node, dict) or segment not in node:
+            return ".".join(walked)
+        node = node[segment]
+    return None
 
 
 # --------------------------------------------------------------------------

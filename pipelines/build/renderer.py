@@ -76,13 +76,38 @@ def preserve_indentation(text: str) -> str:
     return _OWN_LINE_EXCLUSION.sub(rewrite, text)
 
 
+def tidy(text: str) -> str:
+    """Remove the traces an unused placeholder leaves behind.
+
+    An own-line exclusion that an environment has not defined renders to its own
+    indentation and nothing else, leaving a whitespace-only line in the middle of
+    the query. That is not cosmetic: YAML cannot write a literal block scalar
+    when any line has trailing whitespace, so a single unused exclusion turns the
+    whole rendered query into an unreadable quoted string full of escapes - which
+    is exactly the artefact a reviewer has to read when comparing what is
+    deployed against what is in the repository.
+
+    A whitespace-only line is therefore dropped, while a genuinely empty line the
+    author wrote is kept: the two are distinguishable, because only the first has
+    characters in it.
+    """
+    lines = [line.rstrip() for line in text.split("\n")]
+    kept = [
+        line
+        for original, line in zip(text.split("\n"), lines, strict=True)
+        if line or not original.strip("\n")
+    ]
+    return "\n".join(kept)
+
+
 def render_text(env: jinja2.Environment, text: str, context: dict[str, Any], where: str) -> str:
     try:
-        return env.from_string(preserve_indentation(text)).render(**context)
+        rendered = env.from_string(preserve_indentation(text)).render(**context)
     except jinja2.UndefinedError as exc:
         raise RenderError(f"{where}: {exc.message}") from exc
     except jinja2.TemplateSyntaxError as exc:
         raise RenderError(f"{where}: template syntax error on line {exc.lineno}: {exc.message}") from exc
+    return tidy(rendered)
 
 
 def render_block(env: jinja2.Environment, block: Any, context: dict[str, Any], where: str) -> Any:
