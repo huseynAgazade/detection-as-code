@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from jsonschema import Draft202012Validator
 
 from pipelines.lib.findings import Report

@@ -82,7 +82,7 @@ tests/                 Pipeline test suite
 ```bash
 git clone https://github.com/huseynAgazade/detection-as-code.git
 cd detection-as-code
-make install
+make install          # creates .venv; every make target then uses it
 
 make validate         # stage 1 - structure, quality gates, sensitive values
 make build            # stage 3 - render dist/ for every environment
