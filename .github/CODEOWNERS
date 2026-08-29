@@ -1,0 +1,11 @@
+# Detection content and the pipeline that governs it are reviewed by the
+# detection engineering team. Replace the placeholder team with your own before
+# enabling required reviews.
+
+*                       @your-org/detection-engineering
+
+# Changes to what "valid" and "good" mean affect every rule in the repository,
+# so they get a second reviewer.
+/schemas/               @your-org/detection-engineering @your-org/soc-leads
+/pipelines/review/      @your-org/detection-engineering @your-org/soc-leads
+/environments/          @your-org/detection-engineering @your-org/soc-leads

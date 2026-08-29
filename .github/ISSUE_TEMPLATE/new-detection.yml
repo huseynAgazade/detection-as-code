@@ -1,0 +1,53 @@
+name: Detection request
+description: Ask for coverage of a technique or behaviour
+title: "[Detection] "
+labels: ["detection-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the behaviour you want detected. The more precisely the
+        behaviour is stated, the more likely the resulting rule is to detect it
+        rather than something adjacent to it.
+
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: Behaviour to detect
+      description: What does the attacker do, and what does it leave behind in the logs?
+      placeholder: |
+        An account requests Kerberos service tickets for many distinct SPNs with
+        RC4 encryption, which is how Kerberoasting collects crackable tickets.
+    validations:
+      required: true
+
+  - type: input
+    id: attack
+    attributes:
+      label: ATT&CK technique
+      placeholder: "T1558.003 - Kerberoasting"
+
+  - type: textarea
+    id: data_sources
+    attributes:
+      label: Data sources
+      description: Which logs would show this, and are they currently onboarded?
+    validations:
+      required: true
+
+  - type: textarea
+    id: false_positives
+    attributes:
+      label: Expected benign causes
+      description: What legitimate activity looks similar? This shapes the rule more than the malicious case does.
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "Low - coverage gap, no known exposure"
+        - "Medium - relevant to our environment"
+        - "High - active threat or audit finding"
+    validations:
+      required: true

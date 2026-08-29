@@ -1,0 +1,144 @@
+name: Detection CI
+
+# The pipeline a detection passes through before it can reach a SIEM.
+#
+#   validate  deterministic and offline: schema, conventions, quality gates,
+#             sensitive-value scan. Runs on everything, needs no credentials.
+#   review    AI quality review of the rules this pull request touched, scored
+#             against the rubric in pipelines/review/rubric.py and gated on the
+#             result. Runs only on pull requests, and only for changed rules,
+#             because it costs money per rule.
+#   build     renders every environment package, proving the rules still
+#             resolve against every environment's variables.
+#
+# validate and build are required checks. review is required on protected
+# branches; see docs/pipeline.md for the branch protection settings that go
+# with this file.
+
+on:
+  pull_request:
+    paths:
+      - "detections/**"
+      - "environments/**"
+      - "schemas/**"
+      - "pipelines/**"
+      - "tests/**"
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHON_VERSION: "3.12"
+
+concurrency:
+  group: detection-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint pipeline code
+        run: ruff check pipelines tests
+
+      - name: Pipeline unit tests
+        run: pytest
+
+      # Findings are emitted as GitHub annotations, so they appear on the diff
+      # rather than only in the job log.
+      - name: Validate detection catalogue
+        run: python -m pipelines.validate
+
+  review:
+    name: AI quality review
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The review stage diffs against the base branch to find changed
+          # rules, which needs more than a shallow clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Review changed detections
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DETECTION_REVIEW_MODEL: ${{ vars.DETECTION_REVIEW_MODEL || 'claude-opus-5' }}
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          python -m pipelines.review \
+            --changed-from "origin/${{ github.base_ref }}" \
+            --markdown review.md \
+            --json review.json
+
+      # Posted whether or not the gate passed: a failing review is exactly the
+      # one a reviewer needs to read.
+      - name: Comment the review on the pull request
+        if: always() && hashFiles('review.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file review.md
+
+      - name: Upload review artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detection-review
+          path: |
+            review.md
+            review.json
+          if-no-files-found: ignore
+
+  build:
+    name: Build environment packages
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build every environment
+        run: python -m pipelines.build --output dist/
+
+      # The manifests are the record of what each environment should be
+      # running. Keeping them as artefacts makes "what changed in production
+      # this week" answerable from CI history alone.
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: detection-packages
+          path: dist/
+          retention-days: 30
