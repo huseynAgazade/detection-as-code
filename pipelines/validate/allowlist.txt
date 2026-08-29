@@ -1,0 +1,16 @@
+# Reviewed exceptions to the sensitive-value scan.
+#
+# One literal value per line; a line matches when it appears anywhere inside the
+# flagged value, so a bare domain covers every hostname under it. Adding an entry
+# is a reviewed change: say who approved it and why, next to the value.
+#
+# Nothing that identifies a real environment belongs here. If a value has to be
+# real to make a rule work, it belongs in that environment's exclusions.yaml, in
+# a repository that is not shared.
+
+# --- public documentation and vendor references ---------------------------
+attack.mitre.org
+learn.microsoft.com
+owasp.org
+schemas/detection.schema.json
+example.org
