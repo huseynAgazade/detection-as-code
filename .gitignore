@@ -1,0 +1,17 @@
+# Build output. Everything under dist/ is generated from detections/ and
+# environments/; committing it would create a second source of truth.
+dist/
+
+# Review artefacts
+review.md
+review.json
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.env
+.DS_Store
