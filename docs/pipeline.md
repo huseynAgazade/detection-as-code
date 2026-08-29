@@ -122,8 +122,13 @@ On `main`, require:
 - `Validate structure`
 - `Build environment packages`
 - `AI quality review`
-- At least one human approval, with `CODEOWNERS` review for `schemas/`,
-  `pipelines/review/`, and `environments/`
+- At least one human approval
+
+`.github/CODEOWNERS` carries the intended ownership for `schemas/`,
+`pipelines/review/`, and `environments/` but is left inactive: GitHub does not
+let you approve your own pull request, so a required code-owner review on a
+single-maintainer repository blocks every merge. Enable it when there is a team
+behind the repository.
 
 ### Weekly health check
 

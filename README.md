@@ -5,7 +5,7 @@
 **Detection engineering with the discipline of software engineering:
 every rule is reviewed, validated, scored, and built from a single source of truth.**
 
-[![Detection CI](https://github.com/your-org/detection-as-code/actions/workflows/detection-ci.yml/badge.svg)](https://github.com/your-org/detection-as-code/actions/workflows/detection-ci.yml)
+[![Detection CI](https://github.com/huseynAgazade/detection-as-code/actions/workflows/detection-ci.yml/badge.svg)](https://github.com/huseynAgazade/detection-as-code/actions/workflows/detection-ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
@@ -80,7 +80,7 @@ tests/                 Pipeline test suite
 ## Quick start
 
 ```bash
-git clone https://github.com/your-org/detection-as-code.git
+git clone https://github.com/huseynAgazade/detection-as-code.git
 cd detection-as-code
 make install
 

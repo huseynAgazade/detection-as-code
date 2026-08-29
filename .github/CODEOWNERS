@@ -1,11 +1,13 @@
 # Review ownership.
 #
-# Enable these once the repository has an organisation and teams behind it.
-# GitHub reports an error on a CODEOWNERS file that names a team it cannot
-# resolve, so they stay commented out until the teams exist.
+# Left inactive deliberately. On a single-maintainer repository a CODEOWNERS
+# rule enforces nothing useful - GitHub will not let you approve your own pull
+# request, so a required code-owner review on a repo with one owner blocks every
+# merge. The rules below are the intended ownership for when a team exists
+# behind this repository; uncomment them then, and enable required reviews at
+# the same time.
 #
-# Detection content and the pipeline that governs it are reviewed by the
-# detection engineering team:
+# Detection content and the pipeline that governs it:
 #
 #   *                    @your-org/detection-engineering
 #
