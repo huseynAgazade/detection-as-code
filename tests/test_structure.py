@@ -123,6 +123,43 @@ def test_unknown_placeholder_fails_before_the_build_does(make_detection, base_va
     assert any("indx" in f.message for f in report.errors)
 
 
+def test_unknown_nested_variable_is_caught(make_detection, base_variables):
+    """The root existing says nothing about the leaf: a threshold the rule needs
+    but nobody added is the typo people actually make."""
+    detection = make_detection(
+        lambda d: d["detection"]["splunk"].update(
+            query="index=windows | where n > {{ thresholds.never_defined }}\n| table src\n"
+        )
+    )
+    report = Report()
+    structure.check_placeholders(detection, base_variables, report)
+    assert any("thresholds.never_defined" in f.message for f in report.errors)
+
+
+def test_known_nested_variable_passes(make_detection, base_variables):
+    detection = make_detection(
+        lambda d: d["detection"]["splunk"].update(
+            query="index={{ index.windows }} | where n > {{ thresholds.dns_query_burst }}\n| table src\n"
+        )
+    )
+    report = Report()
+    structure.check_placeholders(detection, base_variables, report)
+    assert [f.message for f in report.errors] == []
+
+
+def test_a_guarded_placeholder_is_not_reported(base_variables, make_detection):
+    """`| default(...)` means the author handled absence, so it cannot fail the
+    build and must not be reported as if it would."""
+    detection = make_detection(
+        lambda d: d["detection"]["splunk"].update(
+            query='index=windows | head {{ thresholds.never_defined | default(10) }}\n| table src\n'
+        )
+    )
+    report = Report()
+    structure.check_placeholders(detection, base_variables, report)
+    assert report.errors == []
+
+
 def test_duplicate_rule_ids_are_rejected(make_detection):
     first = make_detection(relative="identity/active_directory/one.yaml")
     second = make_detection(relative="identity/active_directory/two.yaml")

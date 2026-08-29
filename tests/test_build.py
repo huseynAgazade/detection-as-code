@@ -47,6 +47,25 @@ def test_rendered_multiline_exclusion_stays_valid_yaml():
     assert parsed["query"].splitlines() == ["index=windows", 'NOT a="1"', 'NOT b="2"']
 
 
+def test_unused_exclusion_leaves_no_whitespace_line():
+    """A whitespace-only line would force YAML to abandon block style and emit
+    the whole query as an escaped one-liner."""
+    template = 'index=windows\n    {{ exclusions.splunk.absent | default("") }}\n| table src\n'
+    out = render(template, {"exclusions": {"splunk": {}}})
+    assert out == "index=windows\n| table src\n"
+
+
+def test_author_written_blank_lines_survive():
+    out = render("index=windows\n\n| table src\n", {})
+    assert out == "index=windows\n\n| table src\n"
+
+
+def test_rendered_query_stays_a_block_scalar_when_an_exclusion_is_unused():
+    template = 'index=windows\n    {{ exclusions.splunk.absent | default("") }}\n| table src\n'
+    rendered = render(template, {"exclusions": {"splunk": {}}})
+    assert "query: |" in dump_yaml({"query": rendered})
+
+
 def test_deep_merge_overrides_leaves_without_dropping_siblings():
     merged = renderer.deep_merge(
         {"thresholds": {"a": 1, "b": 2}, "index": {"windows": "w"}},
