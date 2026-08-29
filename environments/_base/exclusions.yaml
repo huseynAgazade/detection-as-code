@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# Named exclusion snippets.
+#
+# An exclusion is written in the target platform's own query language and is
+# spliced into a rule at the point the rule chose, by name:
+#
+#     index=... EventCode=4769
+#         {{ exclusions.splunk.kerberoasting_known_enumerators | default("") }}
+#
+# Two rules make this safe to work with:
+#
+#   1. Always chain `| default("")` at the call site. An environment that has
+#      not defined the name then renders nothing instead of failing the build.
+#
+#   2. Put the placeholder alone on its own line. Multi-line values are
+#      re-indented to the placeholder's own column by the build stage so they
+#      stay inside the surrounding YAML block scalar; a placeholder sharing a
+#      line with other query text does not get that treatment.
+#
+# Write each value exactly as it must appear where it lands, including the
+# leading connective the surrounding query needs (`AND NOT ...` inside a where
+# clause, `| where ...` as its own pipeline stage, and so on). There is no
+# implicit joining between names.
+#
+# Multi-line values use a `|-` block scalar, which strips the trailing newline
+# that a bare `|` would keep:
+#
+#   kerberoasting_known_enumerators: |-
+#     NOT Client_Address IN ("10.10.20.15", "10.10.20.16")
+#     NOT Account_Name IN ("svc-scanner@example.internal")
+#
+# Exclusions are tuning, and tuning is environment-specific: this base file
+# deliberately defines none.
+# ---------------------------------------------------------------------------
+
+exclusions:
+  splunk: {}
+  sentinel: {}
+  elastic: {}
+
+# Exclusions scoped to a single rule. Merged on top of the shared maps above,
+# so a rule can add its own names or override a shared one for itself only.
+#
+#   rules:
+#     NET-DNS-001:
+#       splunk:
+#         dns_tunneling_known_services: |-
+#           AND NOT DNS.query IN ("*.telemetry.example.net")
+rules: {}

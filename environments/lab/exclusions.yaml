@@ -1,0 +1,9 @@
+# Lab tuning. Kept deliberately thin: an exclusion that only exists in the lab
+# hides behaviour the rule is supposed to be tested against.
+
+exclusions:
+  splunk: {}
+  sentinel: {}
+  elastic: {}
+
+rules: {}

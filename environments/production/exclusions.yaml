@@ -1,0 +1,23 @@
+# Production tuning. Every entry needs a comment saying what it suppresses and
+# why, because an exclusion is a deliberate, reviewed blind spot.
+
+exclusions:
+  splunk:
+    # Authenticated vulnerability scanners enumerate SPNs as part of their AD
+    # assessment. Scoped to the scanner hosts rather than to the account, so a
+    # stolen scanner credential used from anywhere else still alerts.
+    kerberoasting_known_enumerators: |-
+      NOT Client_Address IN ("192.0.2.24", "192.0.2.25")
+
+    # The endpoint management platform wraps its remediation scripts in
+    # -EncodedCommand. Scoped to the agent's own parent process.
+    encoded_powershell_managed_agents: |-
+      NOT Processes.parent_process_name IN ("mgmt-agent.exe", "mgmt-runner.exe")
+
+  sentinel:
+    kerberoasting_known_enumerators: |-
+      | where IpAddress !in ("192.0.2.24", "192.0.2.25")
+
+  elastic: {}
+
+rules: {}
