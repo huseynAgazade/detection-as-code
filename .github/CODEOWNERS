@@ -1,11 +1,17 @@
+# Review ownership.
+#
+# Enable these once the repository has an organisation and teams behind it.
+# GitHub reports an error on a CODEOWNERS file that names a team it cannot
+# resolve, so they stay commented out until the teams exist.
+#
 # Detection content and the pipeline that governs it are reviewed by the
-# detection engineering team. Replace the placeholder team with your own before
-# enabling required reviews.
-
-*                       @your-org/detection-engineering
-
+# detection engineering team:
+#
+#   *                    @your-org/detection-engineering
+#
 # Changes to what "valid" and "good" mean affect every rule in the repository,
-# so they get a second reviewer.
-/schemas/               @your-org/detection-engineering @your-org/soc-leads
-/pipelines/review/      @your-org/detection-engineering @your-org/soc-leads
-/environments/          @your-org/detection-engineering @your-org/soc-leads
+# so they get a second reviewer:
+#
+#   /schemas/            @your-org/detection-engineering @your-org/soc-leads
+#   /pipelines/review/   @your-org/detection-engineering @your-org/soc-leads
+#   /environments/       @your-org/detection-engineering @your-org/soc-leads
