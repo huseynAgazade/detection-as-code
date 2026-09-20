@@ -392,6 +392,15 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md). In short: `make check` before you open 
 pull request, document the false positives, and say what you tested the rule on.
 "It parses" is not testing.
 
+## How this was built
+
+Written with an AI coding assistant. The structural decision worth noting: validation
+stage 1 is fully offline and needs no API key, so contributors can run it locally and CI
+never depends on a model being reachable to tell you your YAML is malformed. Only the
+quality-scoring stage calls out, and it gates at 70/100.
+
+---
+
 ## License
 
 [MIT](LICENSE).
